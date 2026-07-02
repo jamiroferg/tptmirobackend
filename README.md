@@ -23,6 +23,7 @@ Health check: `GET http://localhost:8001/api/health`
 | `IMGBB_API_KEY` | Recommended | Image hosting for Lens |
 | `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` | For listing draft | AI listing copy |
 | `API4AI_API_KEY` | Optional | Direct try-on API (falls back to RapidAPI) |
+| `DATABASE_URL` | Recommended | Postgres for inventory (else `data/inventory.json`) |
 
 ## Deploy (Render / Railway / Fly)
 
@@ -40,6 +41,8 @@ CORS is open (`*`) so the frontend can call this API from any domain.
 |--------|------|---------|
 | GET | `/api/health` | Health + feature flags |
 | GET | `/api/inventory` | TPT inventory watches |
+| POST | `/api/inventory/draft` | Lens + AI spec draft from photo or image URL |
+| POST | `/api/inventory` | Add watch to inventory |
 | POST | `/api/identify/full` | Lens identify + matches |
 | POST | `/api/try-on` | Virtual wrist try-on |
 | POST | `/api/listing-draft` | Dealer listing draft |

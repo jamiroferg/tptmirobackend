@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Optional, Union
 
 import bootstrap  # noqa: F401 — path + env setup
 
@@ -13,7 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from lib.media import normalize_to_jpeg_bytes
-from inventory import get_watch, list_inventory
+from inventory import create_watch, get_watch, list_inventory
+from inventory_draft import draft_inventory_from_image
+from inventory_store import storage_backend
+from db import db_health, init_db, postgres_enabled, seed_inventory_if_empty
+from inventory_seed import DEFAULT_INVENTORY
 from listing import generate_listing_draft
 from tryon_service import is_configured as tryon_configured
 from tryon_service import prefetch_watch_image, run_try_on
@@ -31,6 +36,14 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=str(bootstrap.UPLOAD_DIR)), name="tpt-uploads")
 
 
+@app.on_event("startup")
+def _startup_db() -> None:
+    if not postgres_enabled():
+        return
+    init_db()
+    seed_inventory_if_empty(DEFAULT_INVENTORY)
+
+
 class ListingRequest(BaseModel):
     identification: dict
     notes: str = ""
@@ -40,8 +53,26 @@ class ListingsRequest(BaseModel):
     scan_id: str
 
 
+class CreateInventoryRequest(BaseModel):
+    title: str
+    brand: str
+    model: str = ""
+    reference: str = ""
+    case_material: str = ""
+    dial: str = ""
+    case_size_mm: Optional[int] = None
+    stones: str = ""
+    subtitle: str = ""
+    price_usd: Optional[Union[int, float]] = None
+    image_url: str
+    product_url: str = ""
+    inquire_url: str = ""
+    in_stock: bool = True
+
+
 @app.get("/api/health")
 def health() -> dict:
+    pg = db_health()
     return {
         "ok": True,
         "service": "tpt-watch-mvp",
@@ -50,12 +81,57 @@ def health() -> dict:
         "tpt_boost": tpt_boost_enabled(),
         "identify_cache": True,
         "try_on": tryon_configured(),
+        "inventory_storage": storage_backend(),
+        "postgres": pg,
     }
 
 
 @app.get("/api/inventory")
 def inventory_list() -> dict:
     return {"ok": True, "items": list_inventory()}
+
+
+@app.post("/api/inventory/draft")
+async def inventory_draft(
+    file: Optional[UploadFile] = File(None),
+    image_url: str = Form(""),
+    hint: str = Form(""),
+) -> dict:
+    """Upload or paste image URL → Lens identify → AI-filled TPT spec fields."""
+    url = (image_url or "").strip()
+    raw: bytes | None = None
+    if file is not None:
+        raw = await file.read()
+    if not raw and not url:
+        raise HTTPException(status_code=400, detail="Upload a photo or paste an image URL")
+    if raw is not None and not raw:
+        raise HTTPException(status_code=400, detail="empty file")
+    try:
+        return await asyncio.to_thread(
+            draft_inventory_from_image,
+            file_bytes=raw,
+            image_url=url if not raw else "",
+            hint=hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/inventory")
+async def inventory_create(body: CreateInventoryRequest) -> dict:
+    """Add a watch to inventory (dealer sets price manually)."""
+    try:
+        item = await asyncio.to_thread(
+            create_watch,
+            body.model_dump(exclude_none=False),
+        )
+        return {"ok": True, "item": item}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/inventory/{watch_id}")
