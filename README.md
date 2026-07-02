@@ -41,7 +41,8 @@ CORS is open (`*`) so the frontend can call this API from any domain.
 |--------|------|---------|
 | GET | `/api/health` | Health + feature flags |
 | GET | `/api/inventory` | TPT inventory watches |
-| POST | `/api/inventory/draft` | Lens + AI spec draft from photo or image URL |
+| POST | `/api/inventory/identify` | Lens matches only (pick listing next) |
+| POST | `/api/inventory/draft` | AI spec draft from selected listing + identity |
 | POST | `/api/inventory` | Add watch to inventory |
 | POST | `/api/identify/full` | Lens identify + matches |
 | POST | `/api/try-on` | Virtual wrist try-on |

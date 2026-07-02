@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from lib.media import normalize_to_jpeg_bytes
 from inventory import create_watch, get_watch, list_inventory
-from inventory_draft import draft_inventory_from_image
+from inventory_draft import draft_inventory_from_image, draft_inventory_from_selection, identify_inventory_image
 from inventory_store import storage_backend
 from db import db_health, init_db, postgres_enabled, seed_inventory_if_empty
 from inventory_seed import DEFAULT_INVENTORY
@@ -70,6 +70,12 @@ class CreateInventoryRequest(BaseModel):
     in_stock: bool = True
 
 
+class InventoryDraftRequest(BaseModel):
+    identification: dict
+    selected_match: Optional[dict] = None
+    image_url: str = ""
+
+
 @app.get("/api/health")
 def health() -> dict:
     pg = db_health()
@@ -91,13 +97,59 @@ def inventory_list() -> dict:
     return {"ok": True, "items": list_inventory()}
 
 
-@app.post("/api/inventory/draft")
-async def inventory_draft(
+@app.post("/api/inventory/identify")
+async def inventory_identify(
     file: Optional[UploadFile] = File(None),
     image_url: str = Form(""),
     hint: str = Form(""),
 ) -> dict:
-    """Upload or paste image URL → Lens identify → AI-filled TPT spec fields."""
+    """Upload or paste image → Lens matches only (dealer picks listing next)."""
+    url = (image_url or "").strip()
+    raw: bytes | None = None
+    if file is not None:
+        raw = await file.read()
+    if not raw and not url:
+        raise HTTPException(status_code=400, detail="Upload a photo or paste an image URL")
+    if raw is not None and not raw:
+        raise HTTPException(status_code=400, detail="empty file")
+    try:
+        return await asyncio.to_thread(
+            identify_inventory_image,
+            file_bytes=raw,
+            image_url=url if not raw else "",
+            hint=hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/inventory/draft")
+async def inventory_draft(body: InventoryDraftRequest) -> dict:
+    """Selected listing + Lens identity → AI-filled TPT spec fields."""
+    if not body.identification:
+        raise HTTPException(status_code=400, detail="identification required")
+    try:
+        return await asyncio.to_thread(
+            draft_inventory_from_selection,
+            identification=body.identification,
+            selected_match=body.selected_match,
+            image_url=body.image_url.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/inventory/draft/quick")
+async def inventory_draft_quick(
+    file: Optional[UploadFile] = File(None),
+    image_url: str = Form(""),
+    hint: str = Form(""),
+) -> dict:
+    """Legacy one-shot: identify + draft from first match."""
     url = (image_url or "").strip()
     raw: bytes | None = None
     if file is not None:
