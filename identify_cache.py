@@ -46,6 +46,8 @@ def _get_valid(key: str) -> Optional[dict[str, Any]]:
 def store(crop_bytes: bytes, hint: str, result: dict[str, Any]) -> None:
     if not _enabled():
         return
+    if not (result.get("matches") or result.get("match_count")):
+        return
     key = cache_key(crop_bytes, hint)
     with _LOCK:
         _CACHE[key] = (dict(result), time.monotonic() + _ttl_s())

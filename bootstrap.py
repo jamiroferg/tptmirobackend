@@ -17,9 +17,9 @@ load_dotenv(override=False)
 
 import os
 
-# Faster Lens tail latency + skip heavy /search bundle when unset.
+# Faster Lens tail latency; full /search bundle improves match yield.
 os.environ.setdefault("LENS_HEDGE_DELAY", "3")
-os.environ.setdefault("LENS_SEARCH_BUNDLE", "0")
+os.environ.setdefault("LENS_SEARCH_BUNDLE", "1")
 
 UPLOAD_DIR = TPT_BACKEND / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)

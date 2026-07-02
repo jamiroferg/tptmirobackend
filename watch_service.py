@@ -168,7 +168,26 @@ def _identify_core(crop: bytes, *, hint: str = "", save_upload: bool = False) ->
     )
 
     raw_matches = _filter_watch_matches(list(bundle.matches or []))
+    if len(raw_matches) < 6 and bundle.organic_results:
+        seen = {m.get("link") for m in raw_matches if m.get("link")}
+        organic = lens.organic_results_to_matches(
+            bundle.organic_results,
+            limit=10,
+            seen_links=seen,
+        )
+        raw_matches.extend(organic)
+
     identity = _extract_watch_identity(raw_matches, hint=hint)
+
+    if len(raw_matches) < 8:
+        try:
+            tpt_rows = _fetch_tpt_inventory_matches(identity, hint=hint)
+            if tpt_rows:
+                raw_matches, _ = _merge_with_tpt(raw_matches, tpt_rows)
+                identity = _extract_watch_identity(raw_matches, hint=hint)
+        except Exception:
+            pass
+
     ranked = _rank_lens_matches(raw_matches, identity, hint=hint)
 
     session = scan_cache.create_scan(
