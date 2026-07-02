@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Optional
 
 from inventory import get_watch
@@ -66,7 +67,7 @@ def run_try_on(
         apparel_bytes=watch_prepared,
         apparel_url=watch_url if not watch_prepared else None,
     )
-    result_url = save_image_bytes(out_bytes, filename=f"tryon.{ext}")
+    result_url = save_image_bytes(out_bytes, filename=f"tryon-{uuid.uuid4().hex[:12]}.{ext}")
     return {
         "ok": True,
         "result_url": result_url,
